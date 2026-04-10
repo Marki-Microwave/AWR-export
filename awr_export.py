@@ -3,36 +3,25 @@ awr_export.py
 
 Exports all graph trace data from an AWR Design Environment project.
 
-Strategy: ExportTraceData crashes AWR when called via external COM or
-Routine.Run(). The stable path is running a .bas script from AWR's
-internal Script Editor (F5). This module:
-  1. Generates a .bas export script with the output directory baked in.
-  2. Imports it into AWR's GlobalScripts via one lightweight COM call.
-  3. Prompts the user to press F5 in AWR's Script Editor.
-  4. Waits for the export files to appear, then reports results.
+Reads measurement data directly via COM properties (XValue/YValue)
+and writes tab-separated files from Python. This avoids ExportTraceData
+which crashes AWR when called from external COM.
 """
 
 import os
 import re
-import time
 import win32com.client
 from tkinter import Tk, filedialog
 
 
-_BAS_TEMPLATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  "scripts", "export_all_graphs.bas")
-
-SCRIPT_NAME = "export_all_graphs"
+def _sanitize_filename(name):
+    """Replace characters illegal on Windows with underscores."""
+    return re.sub(r'[/\\:*?"<>|]', '_', name.replace(" ", "_"))
 
 
 def _connect_awr():
     """Connect to a running AWR instance."""
-    com_classes = [
-        "AWR.MWOffice",
-        "MWOApp.MWOffice",
-        "MWOApp.MWOfficeApp",
-    ]
-    for cls_name in com_classes:
+    for cls_name in ["AWR.MWOffice", "MWOApp.MWOffice", "MWOApp.MWOfficeApp"]:
         try:
             return win32com.client.Dispatch(cls_name)
         except Exception:
@@ -40,28 +29,68 @@ def _connect_awr():
     return None
 
 
-def _generate_bas(export_dir):
-    """Generate a .bas script with the export directory baked in."""
-    export_dir = export_dir.replace("/", "\\")
-    if not export_dir.endswith("\\"):
-        export_dir += "\\"
-    with open(_BAS_TEMPLATE_FILE, "r") as f:
-        template = f.read()
-    # Replace the hardcoded output directory in the template
-    return re.sub(
-        r'exportDir = ".*?"',
-        f'exportDir = "{export_dir}"',
-        template,
-    )
+def _export_graph(graph, export_dir):
+    """Read measurement data from a graph and write to a tab-separated file.
+
+    Returns (filepath, n_measurements, n_points) on success, or None if
+    the graph has no exportable data.
+    """
+    header_parts = []
+    columns = []
+    xvals = None
+    n_points = None
+
+    for mi in range(1, graph.Measurements.Count + 1):
+        m = graph.Measurements.Item(mi)
+        if not m.Enabled:
+            continue
+        try:
+            npts = m.XPointCount
+        except Exception:
+            continue
+        if npts == 0:
+            continue
+
+        try:
+            if xvals is None:
+                xvals_raw = [m.XValue(i) for i in range(1, npts + 1)]
+                if xvals_raw[0] > 1e6:
+                    xvals = [x / 1e9 for x in xvals_raw]
+                    header_parts.append("Frequency (GHz)")
+                else:
+                    xvals = xvals_raw
+                    header_parts.append("X")
+                n_points = npts
+
+            yvals = [m.YValue(i, 1) for i in range(1, min(npts, n_points) + 1)]
+            header_parts.append(m.Name)
+            columns.append(yvals)
+        except Exception:
+            continue
+
+    if not columns:
+        return None
+
+    filename = _sanitize_filename(graph.Name) + ".txt"
+    filepath = os.path.join(export_dir, filename)
+
+    with open(filepath, "w") as f:
+        f.write("\t".join(header_parts) + "\n")
+        for row in range(n_points):
+            parts = [str(xvals[row])]
+            for col in columns:
+                parts.append(str(col[row]))
+            f.write("\t".join(parts) + "\n")
+
+    return filepath, len(columns), n_points
 
 
 def export_all_graph_traces(project_path=None, export_dir=None):
     """Export all graph trace data from the currently open AWR project.
 
     The AWR project must already be open with simulations run.
-    If project_path is given it is ignored (kept for CLI compatibility).
+    Measurements that are disabled or have no data are skipped.
     """
-    # Prompt for export directory if not provided
     if not export_dir:
         root = Tk()
         root.withdraw()
@@ -73,51 +102,32 @@ def export_all_graph_traces(project_path=None, export_dir=None):
 
     os.makedirs(export_dir, exist_ok=True)
 
-    # Connect to running AWR
     app = _connect_awr()
     if app is None:
         print("Failed to connect to AWR. Is it running?")
         return
 
-    project_name = app.Project.Name
-    graph_count = app.Project.Graphs.Count
-    print(f"Connected to AWR — project: {project_name} ({graph_count} graphs)")
+    project = app.Project
+    graph_count = project.Graphs.Count
+    print(f"Connected to AWR — project: {project.Name} ({graph_count} graphs)")
 
-    # Write .bas script to disk
-    scripts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
-    os.makedirs(scripts_dir, exist_ok=True)
-    bas_path = os.path.join(scripts_dir, f"{SCRIPT_NAME}.bas")
+    exported = 0
+    skipped = 0
 
-    with open(bas_path, "w") as f:
-        f.write(_generate_bas(export_dir))
-    print(f"Generated script: {bas_path}")
+    for gi in range(1, graph_count + 1):
+        graph = project.Graphs.Item(gi)
+        result = _export_graph(graph, export_dir)
 
-    # Import into AWR GlobalScripts
-    if app.GlobalScripts.Exists(SCRIPT_NAME):
-        app.GlobalScripts.Remove(SCRIPT_NAME)
-    app.GlobalScripts.Import(bas_path)
-    print(f"Script '{SCRIPT_NAME}' loaded into AWR GlobalScripts.")
+        if result is None:
+            skipped += 1
+            print(f"  SKIP (no data): {graph.Name}")
+        else:
+            filepath, n_meas, n_pts = result
+            exported += 1
+            print(f"  OK: {graph.Name} ({n_meas} measurements, {n_pts} points)")
 
-    print()
-    print("=" * 60)
-    print("  NEXT STEP — run the script inside AWR:")
-    print()
-    print("  1. In AWR: View > Script Editor  (or Alt+F11)")
-    print(f"  2. Open '{SCRIPT_NAME}' under Global Scripts")
-    print("  3. Press F5 to run")
-    print("  4. Check the Debug window for progress")
-    print("=" * 60)
-    print()
-
-    # Wait for user to run the script, then report results
-    input("Press Enter here after the AWR script finishes...")
-
-    # Report what was exported
-    exported = [f for f in os.listdir(export_dir) if f.endswith(".txt")]
-    print(f"\nExport complete: {len(exported)} files in {export_dir}")
-    for f in sorted(exported):
-        size = os.path.getsize(os.path.join(export_dir, f))
-        print(f"  {f}  ({size:,} bytes)")
+    print(f"\nExport complete: {exported} exported, {skipped} skipped out of {graph_count} graphs.")
+    print(f"Output: {export_dir}")
 
 
 if __name__ == "__main__":

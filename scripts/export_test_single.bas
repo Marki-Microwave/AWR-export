@@ -1,14 +1,14 @@
-' Test: export just the first graph
-' $MENU=Scripts
+' Diagnostic: just list graph names
 Sub Main
+    Dim i As Integer
     Dim g As Graph
-    Set g = Project.Graphs(1)
 
-    Debug.Print "Activating: " & g.Name
-    g.Activate
+    Debug.Print "Graph count: " & Project.Graphs.Count
 
-    Debug.Print "Exporting..."
-    g.ExportTraceData "C:\Users\severin.pindell\PycharmProjects\AWR\output\single_test.txt"
+    For i = 1 To Project.Graphs.Count
+        Set g = Project.Graphs(i)
+        Debug.Print "  " & i & ": " & g.Name
+    Next i
 
     Debug.Print "Done."
 End Sub
