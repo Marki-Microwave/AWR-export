@@ -22,6 +22,7 @@ class APFileParser:
             title="Select MWO Graph Data File",
             filetypes=[("MWO  Data File", "*.txt"), ("All Files", "*.*")]
         )
+        root.destroy()
         if not file_path:
             raise FileNotFoundError("No file selected.")
         return file_path
@@ -33,15 +34,23 @@ class APFileParser:
         raw_df = pd.read_csv(self.file_path, sep='\t')
 
         cleaned_columns = []
+        seen_counts = {}  # tracks how many times each cleaned name has appeared
         for col in raw_df.columns:
             if ':' in col:
                 base_name, metadata = col.split(':', 1)
                 cleaned_name = base_name.strip()
-                self.column_mapping[cleaned_name] = col
             else:
                 cleaned_name = col.strip()
-                self.column_mapping[cleaned_name] = col
-            cleaned_columns.append(cleaned_name)
+
+            if cleaned_name in seen_counts:
+                seen_counts[cleaned_name] += 1
+                unique_name = f"{cleaned_name}_{seen_counts[cleaned_name]}"
+            else:
+                seen_counts[cleaned_name] = 1
+                unique_name = cleaned_name
+
+            self.column_mapping[unique_name] = col
+            cleaned_columns.append(unique_name)
 
         raw_df.columns = cleaned_columns
         self.df = raw_df
