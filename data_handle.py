@@ -35,7 +35,7 @@ class data_handler:
         data_labels = []
         info = []
         for f_csv in self.csv_list:
-            path = self.data_path + "\\" + f_csv
+            path = os.path.join(self.data_path, f_csv)
             with open(path, newline='') as csvfile:
                 # full csv contents
                 file_dump = csvfile.read()
@@ -95,14 +95,14 @@ class data_handler:
     def smooth_data(self, data, n):
         y = []
         for i, dat in enumerate(data[1]):
-            if (i > n-1) and (i < len(data[0] - n -1)):
+            if (i > n-1) and (i < len(data[0]) - n - 1):
                 y.append(sum(data[1][(i-n):(i+n)]/len(data[1][(i-n):(i+n)])))
         x = data[0][n:]
         x = x[:(len(data[0])-n)]
         return x,y
 
-    def plot_data(self, label_ind_x, label_ind_y, chan_ind, title="default", xlim="default", ylim="default",
-                  xtick="default", ytick="default", legend = 'default',logscale=False, avg=[False, [0, 0]], ret_ax=False, pass_ax=False,
+    def plot_data(self, label_ind_x, label_ind_y, chan_ind, title=None, xlim=None, ylim=None,
+                  xtick=None, ytick=None, legend=None, logscale=False, avg=[False, [0, 0]], ret_ax=False, pass_ax=False,
                   ax_fig=None, fig_res = (20, 12), trim = False, trim_low = False, Mhz = False, smooth = False, lesspoints = False, remove_fpoints = False):
         data_x = []
         data_y = []
@@ -157,7 +157,6 @@ class data_handler:
                 x_dat = x_temp
                 y_dat = y_temp
             if trim:
-                xi_o = 0
                 for xi, x in enumerate(x_dat):
                     if x >= trim[i]:
                         xi_0 = xi
@@ -166,7 +165,6 @@ class data_handler:
                 y_dat = y_dat[0:xi_0]
 
             if trim_low:
-                xi_o = 0
                 for xi, x in enumerate(x_dat):
                     if x >= trim_low[i]:
                         xi_0 = xi
@@ -186,21 +184,21 @@ class data_handler:
 
         # print(self.data_labels)
 
-        if title == "default":
+        if title is None:
             ax.set_title(self.data_labels[0][chan_ind][label_ind_y])
             filename = self.data_labels[0][chan_ind][label_ind_y] + ".png"
         else:
             ax.set_title(title, weight ='bold')
             filename = title + ".png"
 
-        if not isinstance(xlim, str):
+        if xlim is not None:
             ax.set_xlim(xlim)
-            if not isinstance(xtick, str):
+            if xtick is not None:
                 ax.xaxis.set_ticks(np.arange(xlim[0], xlim[1], xtick))
 
-        if not isinstance(ylim, str):
+        if ylim is not None:
             ax.set_ylim(ylim)
-            if not isinstance(ytick, str):
+            if ytick is not None:
                 ax.yaxis.set_ticks(np.arange(ylim[0], ylim[1], ytick))
         if not (logscale or Mhz):
             ax.set_xlabel("Frequency (GHz)",weight= 'bold')
@@ -209,35 +207,35 @@ class data_handler:
         else:
             ax.set_xlabel("Freq(Hz)")
 
-        if legend == "default":
+        if legend is None:
             ax.legend()
         elif legend == "off":
             print(" ")
         else:
             ax.legend(legend)
 
-        fig.savefig(self.save_path + "\\" + filename, dpi=800, bbox_inches='tight')
+        fig.savefig(os.path.join(self.save_path, filename), dpi=800, bbox_inches='tight')
         # plt.show()
         if ret_ax:
             return ax, fig
 
-    def overplot(self, label_x_y_chan_list, title="default", xlim="default", ylim="default",
-                  xtick="default", ytick="default",legend = []):
+    def overplot(self, label_x_y_chan_list, title=None, xlim=None, ylim=None,
+                  xtick=None, ytick=None, legend=[]):
         fig, ax = plt.subplots()
         for item in label_x_y_chan_list:
             ax, fig = self.plot_data(item[0], item[1], item[2], ret_ax=True, pass_ax=True, ax_fig=[ax, fig])
         ax.set_title(title)
-        if not isinstance(xlim, str):
+        if xlim is not None:
             ax.set_xlim(xlim)
-            if not isinstance(xtick, str):
+            if xtick is not None:
                 ax.xaxis.set_ticks(np.arange(xlim[0], xlim[1], xtick))
 
-        if not isinstance(ylim, str):
+        if ylim is not None:
             ax.set_ylim(ylim)
-            if not isinstance(ytick, str):
+            if ytick is not None:
                 ax.yaxis.set_ticks(np.arange(ylim[0], ylim[1], ytick))
         ax.legend(legend)
-        fig.savefig(self.save_path + "\\" + title, dpi=1200)
+        fig.savefig(os.path.join(self.save_path, title), dpi=1200)
 
     def get_trace_names(self):
         trace_names = []
