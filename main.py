@@ -9,7 +9,6 @@ def cmd_export(args):
     import awr_export
 
     awr_export.export_all_graph_traces(
-        project_path=args.project,
         export_dir=args.output_dir,
     )
 
@@ -36,19 +35,13 @@ def main():
     # --- export subcommand ---
     sp_export = subparsers.add_parser(
         "export",
-        help="Export all graph traces from an AWR project to CSV",
-    )
-    sp_export.add_argument(
-        "--project",
-        metavar="PATH",
-        default=None,
-        help="Path to AWR project file (opens file dialog if omitted)",
+        help="Export all graph traces from the open AWR project",
     )
     sp_export.add_argument(
         "--output-dir",
         metavar="PATH",
         default=None,
-        help="Directory for exported CSVs (opens folder dialog if omitted)",
+        help="Directory for exported files (opens folder dialog if omitted)",
     )
     sp_export.set_defaults(func=cmd_export)
 
