@@ -3,3 +3,6 @@ venv2/
 __pycache__/
 *.pyc
 .idea/
+build/
+dist/
+output/
