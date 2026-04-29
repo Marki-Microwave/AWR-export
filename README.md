@@ -19,9 +19,12 @@ This bypasses AWR's `ExportTraceData` COM method, which crashes the application 
 ### Option 1 — prebuilt executable (recommended for end users)
 
 1. Open your AWR project and run all simulations so the graphs have data.
-2. Download `awr_export.exe` from the Releases page.
-3. Double-click it. A folder picker appears — choose where to save the exported files.
-4. Done. One `.txt` per graph appears in the chosen folder.
+2. Go to the [Releases page](https://github.com/Marki-Microwave/AWR-export/releases) and download `awr_export-windows-x64.zip`.
+3. **Extract the entire zip** to a folder of your choice (Desktop, Documents, etc.). You should end up with an `awr_export/` folder containing `awr_export.exe` and an `_internal/` subfolder. **Both are required** — `awr_export.exe` will not run without the `_internal/` folder sitting next to it.
+4. Double-click `awr_export.exe`. A folder picker appears — choose where to save the exported files.
+5. Done. One `.txt` per graph appears in the chosen folder.
+
+> ⚠️ Do not pull `awr_export.exe` out of the extracted folder. It depends on dozens of DLLs and Python files in `_internal/`. If you want a desktop shortcut, right-click `awr_export.exe` → *Send to* → *Desktop (create shortcut)*.
 
 ### Option 2 — from source
 
@@ -73,7 +76,7 @@ pip install pyinstaller
 pyinstaller awr_export.spec
 ```
 
-The bundled app appears in `dist/awr_export/`. Distribute the entire folder — `awr_export.exe` depends on the `_internal/` directory next to it.
+The bundled app appears in `dist/awr_export/`. Distribute the **entire folder** — `awr_export.exe` depends on the `_internal/` directory next to it. To publish a release, zip `dist/awr_export/` (so the zip root is the `awr_export/` folder) and upload it as a release asset.
 
 ## Repo layout
 
