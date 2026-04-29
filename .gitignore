@@ -1,8 +1,25 @@
-venv/
-venv2/
+# Python
 __pycache__/
 *.pyc
+
+# Virtual environments
+venv/
+venv*/
+
+# IDE
 .idea/
+
+# Build artifacts
 build/
+build*/
 dist/
+dist*/
+
+# Local outputs
 output/
+
+# Local example data (large AWR project files / customer measurement sets)
+examples/DATA_SETS/
+examples/TEMP/
+examples/*.emp
+examples/*.vin

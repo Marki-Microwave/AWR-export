@@ -60,11 +60,20 @@ def main():
     # --- dispatch ---
     args = parser.parse_args()
     if not args.command:
-        parser.print_help()
-        sys.exit(1)
+        # Default to export when no subcommand given (e.g. double-click exe)
+        args = parser.parse_args(["export"])
 
     args.func(args)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\nError: {e}")
+    # Keep console window open when launched by double-click
+    if getattr(sys, 'frozen', False):
+        try:
+            input("\nPress Enter to exit...")
+        except EOFError:
+            pass
