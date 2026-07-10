@@ -95,17 +95,55 @@ def _axis_unit(m, axis_index, units):
         return None
 
 
+def _legend_names(graph):
+    """Map measurement name -> custom legend text for renamed traces.
+
+    Traces still using the default legend text are omitted (their default
+    text is the measurement name itself).
+    """
+    names = {}
+    try:
+        for ti in range(1, graph.Traces.Count + 1):
+            try:
+                t = graph.Traces.Item(ti)
+                if t.UseDefaultLegendText:
+                    continue
+                text = (t.LegendText or "").strip()
+                if text and t.MeasurementName not in names:
+                    names[t.MeasurementName] = text
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return names
+
+
+def _column_header(meas_name, legend):
+    """Column header for a measurement: '<legend> - <param>' when renamed.
+
+    The legend name already identifies the source, so the 'Source:' prefix
+    is stripped from the measurement name. No colon is introduced so
+    MWO_Parser keeps the whole header as the column name.
+    """
+    if not legend:
+        return meas_name
+    param = meas_name.split(":", 1)[1] if ":" in meas_name else meas_name
+    return f"{legend} - {param}"
+
+
 def _export_graph(graph, export_dir, units):
-    """Read measurement data from a graph and write to a tab-separated file.
+    """Read measurement data from a graph and write tab-separated files.
 
     Values are converted from COM base units to the project's display units
-    (the units shown on the graph). Measurements sharing an x-vector share
-    one x column; measurements on a different x grid (e.g. measured file
-    data overlaid on a simulated sweep) get their own x column, with short
-    columns padded by empty cells. Returns (filepath, n_measurements,
-    n_rows) on success, or None if the graph has no exportable data.
+    (the units shown on the graph); column headers use the trace legend
+    names where the user renamed them. Measurements sharing an x-vector
+    share one file; a graph overlaying different x grids (e.g. measured
+    file data + simulated sweep) is split into one file per x-group, each
+    a clean rectangular table. Returns a list of (filepath, n_measurements,
+    n_rows) per file written, or None if the graph has no exportable data.
     """
-    # each group: [xheader, xvals, [meas headers], [y columns]]
+    legends = _legend_names(graph)
+    # each group: [xheader, xvals, [column headers], [y columns], legend label]
     groups = []
 
     for mi in range(1, graph.Measurements.Count + 1):
@@ -142,38 +180,42 @@ def _export_graph(graph, export_dir, units):
         except Exception:
             continue
 
+        legend = legends.get(m.Name)
+        header = _column_header(m.Name, legend)
+
         for grp in groups:
             if grp[1] == xvals:
-                grp[2].append(m.Name)
+                grp[2].append(header)
                 grp[3].append(yvals)
                 break
         else:
-            groups.append([xheader, xvals, [m.Name], [yvals]])
+            groups.append([xheader, xvals, [header], [yvals], legend])
 
     if not groups:
         return None
 
-    filename = _sanitize_filename(graph.Name) + ".txt"
-    filepath = os.path.join(export_dir, filename)
+    results = []
+    used_names = set()
+    for gi, (xheader, xvals, headers, columns, legend) in enumerate(groups):
+        if len(groups) == 1:
+            basename = _sanitize_filename(graph.Name)
+        else:
+            label = legend or str(gi + 1)
+            basename = _sanitize_filename(f"{graph.Name} - {label}")
+            if basename in used_names:
+                basename = _sanitize_filename(f"{graph.Name} - {label} {gi + 1}")
+        used_names.add(basename)
+        filepath = os.path.join(export_dir, basename + ".txt")
 
-    n_rows = max(len(grp[1]) for grp in groups)
-    header_parts = []
-    for xheader, _, meas_headers, _ in groups:
-        header_parts.append(xheader)
-        header_parts.extend(meas_headers)
+        with open(filepath, "w") as f:
+            f.write("\t".join([xheader] + headers) + "\n")
+            for row in range(len(xvals)):
+                parts = [str(xvals[row])] + [str(col[row]) for col in columns]
+                f.write("\t".join(parts) + "\n")
 
-    with open(filepath, "w") as f:
-        f.write("\t".join(header_parts) + "\n")
-        for row in range(n_rows):
-            parts = []
-            for _, xvals, _, columns in groups:
-                parts.append(str(xvals[row]) if row < len(xvals) else "")
-                for col in columns:
-                    parts.append(str(col[row]) if row < len(col) else "")
-            f.write("\t".join(parts) + "\n")
+        results.append((filepath, len(columns), len(xvals)))
 
-    n_meas = sum(len(grp[3]) for grp in groups)
-    return filepath, n_meas, n_rows
+    return results
 
 
 def export_all_graph_traces(project_path=None, export_dir=None):
@@ -214,15 +256,16 @@ def export_all_graph_traces(project_path=None, export_dir=None):
 
     for gi in range(1, graph_count + 1):
         graph = project.Graphs.Item(gi)
-        result = _export_graph(graph, export_dir, units)
+        results = _export_graph(graph, export_dir, units)
 
-        if result is None:
+        if not results:
             skipped += 1
             print(f"  SKIP (no data): {graph.Name}")
         else:
-            filepath, n_meas, n_pts = result
             exported += 1
-            print(f"  OK: {graph.Name} ({n_meas} measurements, {n_pts} points)")
+            for filepath, n_meas, n_pts in results:
+                print(f"  OK: {os.path.basename(filepath)} "
+                      f"({n_meas} measurements, {n_pts} points)")
 
     print(f"\nExport complete: {exported} exported, {skipped} skipped out of {graph_count} graphs.")
     print(f"Output: {export_dir}")
